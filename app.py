@@ -1,7 +1,7 @@
 __author__ = 'jburks'
 
 from flask import Flask, jsonify, url_for
-from flask.ext.restful import Api, Resource
+from flask.ext.restful import Api, Resource, abort
 from model import *
 
 app = Flask(__name__)
@@ -24,86 +24,123 @@ class Terms(Resource):
 
 class Term(Resource):
     def get(self, term_id):
-        term = TermNames.get(TermNames.id == term_id)
+        try:
+            term = TermNames.get(TermNames.id == term_id)
 
-        return jsonify({
-            "term": [{
-                         "id": term.id,
-                         "term_name": term.term_name
-                     }]
-        })
+            return jsonify({
+                "term": [{
+                             "id": term.id,
+                             "term_name": term.term_name
+                         }]
+            })
+        except:
+            return abort(400, message="No such term")
 
 
 class DeptsByTerm(Resource):
     def get(self, term_id):
-        departments = []
+
         adoptions = Adoptions.select() \
                 .join(Departments, JOIN_LEFT_OUTER) \
                 .where(Adoptions.term_name == term_id) \
                 .group_by(Departments) \
                 .order_by(Departments.department_code)
 
-        for adoption in adoptions:
-            departments.append({
-                "id": adoption.department.id,
-                "department_name": adoption.department.department_name,
-                "department_code": adoption.department.department_code
-            })
+        if adoptions.count() is not 0:
+            departments = []
+            for adoption in adoptions:
+                departments.append({
+                    "id": adoption.department.id,
+                    "department_name": adoption.department.department_name,
+                    "department_code": adoption.department.department_code
+                })
 
-        return jsonify({"departments": departments})
+            return jsonify({"departments": departments})
 
+        else:
+            return abort(400, message="No such term")
 
 class CoursesByDept(Resource):
     def get(self, department_id):
-        courses = []
         adoptions = Adoptions.select() \
                 .join(Departments, JOIN_LEFT_OUTER) \
                 .where(Adoptions.department == department_id)
 
-        for adoption in adoptions:
-            courses.append({
-                "id": adoption.magento_course,
-                "department_name": adoption.department.department_name,
-                "department_code": adoption.department.department_code,
-                "course_name": adoption.course_name,
-                "course_code": adoption.course_code,
-                "section_code": adoption.section_code
-            })
+        if adoptions.count() is not 0:
+            courses = []
+            for adoption in adoptions:
+                courses.append({
+                    "id": adoption.magento_course,
+                    "department_name": adoption.department.department_name,
+                    "department_code": adoption.department.department_code,
+                    "course_name": adoption.course_name,
+                    "course_code": adoption.course_code,
+                    "section_code": adoption.section_code,
+                    "course_materials_uri": api.url_for(MaterialsByCourseID, course_id=adoption.magento_course)
+                })
 
-        return jsonify({"courses": courses})
+            return jsonify({"courses": courses})
+        else:
+            return abort(400, message="No such department")
+
+
+class CoursesByTerm(Resource):
+    def get(self, term_id):
+        adoptions = Adoptions.select().where(Adoptions.term_name == term_id)
+
+        if adoptions.count() is not 0:
+            courses = []
+            for adoption in adoptions:
+                courses.append({
+                    "id": adoption.magento_course,
+                    "department_name": adoption.department.department_name,
+                    "department_code": adoption.department.department_code,
+                    "course_name": adoption.course_name,
+                    "course_code": adoption.course_code,
+                    "section_code": adoption.section_code,
+                    "course_materials_uri": api.url_for(MaterialsByCourseID, course_id=adoption.magento_course)
+                })
+
+            return jsonify({"courses": courses})
+        else:
+            return abort(400, message="No such term")
 
 
 class SectionsByCourse(Resource):
     def get(self, department_id, course_code):
-        sections = []
+
         adoptions = Adoptions.select() \
                 .join(Departments, JOIN_LEFT_OUTER) \
                 .where(Adoptions.course_code == course_code) \
                 .where(Adoptions.department == department_id)
 
-        for adoption in adoptions:
-            sections.append({
-                "id": adoption.magento_course,
-                "department_name": adoption.department.department_name,
-                "department_code": adoption.department.department_code,
-                "course_name": adoption.course_name,
-                "course_code": adoption.course_code,
-                "section_code": adoption.section_code
-            })
+        if adoptions.count() is not 0:
+            sections = []
+            for adoption in adoptions:
+                sections.append({
+                    "id": adoption.magento_course,
+                    "department_name": adoption.department.department_name,
+                    "department_code": adoption.department.department_code,
+                    "course_name": adoption.course_name,
+                    "course_code": adoption.course_code,
+                    "section_code": adoption.section_code,
+                    "course_materials_uri": api.url_for(MaterialsByCourseID, course_id=adoption.magento_course)
+                })
 
-        return jsonify({"sections": sections})
+            return jsonify({"sections": sections})
+        else:
+            return abort(400, message="No such course")
 
 
 def get_materials(course_id):
-    materials = []
-
     adoptions = Adoptions.select(Adoptions, CatalogProductLink) \
         .join(Departments, JOIN_LEFT_OUTER) \
         .join(TermNames, JOIN_LEFT_OUTER, on=(Adoptions.term_name == TermNames.id)) \
         .switch(Adoptions).join(CatalogProductEntity, JOIN_LEFT_OUTER, on=(Adoptions.magento_course == CatalogProductEntity.entity).alias("product")) \
         .switch(Adoptions).join(CatalogProductLink, JOIN_LEFT_OUTER, on=(CatalogProductEntity.entity == CatalogProductLink.product).alias("link")) \
-        .where(Adoptions.magento_course == course_id) \
+        .where(Adoptions.magento_course == course_id)
 
+    materials = []
     for adoption in adoptions:
         # This is the ID of the book or "product" in Magento
         linked_product = adoption.link.linked_product.entity
@@ -212,34 +249,50 @@ def get_materials(course_id):
 
 class MaterialsByCourseID(Resource):
     def get(self, course_id):
-        return jsonify({"materials": get_materials(course_id)})
+        try:
+            adoption = Adoptions.select(Adoptions.magento_course).where(Adoptions.magento_course == course_id).get()
+        except:
+            return abort(400, message="No such course")
+
+        try:
+            return jsonify({"materials": get_materials(adoption.magento_course)})
+
+        except:
+            return abort(400, message="No materials for course")
+
 
 class MaterialsByCourseVars(Resource):
-    def get(self, term_name, dept_name, course_code, section_code):
+    def get(self, term_name, dept_code, course_code, section_code):
         try:
             adoption = Adoptions.select(Adoptions.magento_course) \
                 .join(Departments, JOIN_LEFT_OUTER) \
                 .switch(Adoptions).join(TermNames, JOIN_LEFT_OUTER, on=(Adoptions.term_name == TermNames.id)) \
                 .where(TermNames.term_name == term_name) \
-                .where(Departments.department_name == dept_name) \
+                .where(Departments.department_code == dept_code) \
                 .where(Adoptions.course_code == course_code) \
                 .where(Adoptions.section_code == section_code) \
                 .get()
 
-            return jsonify({"materials": get_materials(adoption.magento_course)})
         except:
-            return jsonify({"error": "no such course"})
+            return abort(400, message="No such course")
+
+        try:
+            return jsonify({"materials": get_materials(adoption.magento_course)})
+
+        except:
+            return abort(400, message="No materials for course")
 
 
 # API resource routing
 api_base_url = "/api"
 api.add_resource(Terms, api_base_url + "/v1/terms")
 api.add_resource(Term, api_base_url + "/v1/term/<int:term_id>")
-api.add_resource(DeptsByTerm, api_base_url + "/v1/departments/<int:term_id>")
-api.add_resource(CoursesByDept, api_base_url + "/v1/courses/<int:department_id>")
-api.add_resource(SectionsByCourse, api_base_url + "/v1/sections/<int:department_id>/<int:course_code>")
+api.add_resource(DeptsByTerm, api_base_url + "/v1/departments_by_term/<int:term_id>")
+api.add_resource(CoursesByDept, api_base_url + "/v1/courses_by_dept/<int:department_id>")
+api.add_resource(CoursesByTerm, api_base_url + "/v1/courses_by_term/<int:term_id>")
+api.add_resource(SectionsByCourse, api_base_url + "/v1/sections_by_course/<int:department_id>/<string:course_code>")
 api.add_resource(MaterialsByCourseID, api_base_url + "/v1/materials_by_id/<int:course_id>")
-api.add_resource(MaterialsByCourseVars, api_base_url + "/v1/materials_by/<string:term_name>/<string:dept_name>/<string:course_code>/<string:section_code>")
+api.add_resource(MaterialsByCourseVars, api_base_url + "/v1/materials/<string:term_name>/<string:dept_code>/<string:course_code>/<string:section_code>")
 
 
 if __name__ == '__main__':
