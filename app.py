@@ -1,16 +1,49 @@
 __author__ = 'jburks'
 
-from flask import Flask, jsonify, url_for
+from flask import Flask, jsonify, request, render_template
 from flask.ext.restful import Api, Resource, abort
 from model import *
+import inspect
 
 app = Flask(__name__)
 api = Api(app)
 
+api_base_url = "/api"
+
+def check_token(token):
+    '''
+    Very basic token based authentication using existing tokens in the database
+    '''
+    try:
+        apiuser = ApiUser.get(ApiUser.api_key == token)
+        return True
+    except:
+        return abort(403, message="Authentication Token Required")
+
 
 # API functions
 class Terms(Resource):
+    @staticmethod
+    def url():
+        return api_base_url + "/v1/terms"
+
     def get(self):
+        '''
+        Returns a JSON list of terms active at this school.
+
+        {
+            "terms": [
+                {
+                  "id": <int>,
+                  "term_name": <string>,
+                  "uri": <string>
+                }
+            ]
+        }
+        '''
+
+        check_token(request.headers.get('token'))
+
         terms = []
         for term in TermNames.select().where(TermNames.active == True):
             terms.append({
@@ -23,7 +56,26 @@ class Terms(Resource):
 
 
 class Term(Resource):
+    @staticmethod
+    def url():
+        return api_base_url + "/v1/term/<int:term_id>"
+
     def get(self, term_id):
+        '''
+        Returns a JSON list describing the term.
+
+        {
+            "term": [
+                {
+                  "id": <int>,
+                  "term_name": <string>
+                }
+            ]
+        }
+        '''
+
+        check_token(request.headers.get('token'))
+
         try:
             term = TermNames.get(TermNames.id == term_id)
 
@@ -38,7 +90,25 @@ class Term(Resource):
 
 
 class DeptsByTerm(Resource):
+    @staticmethod
+    def url():
+        return api_base_url + "/v1/departments_by_term/<int:term_id>"
+
     def get(self, term_id):
+        '''
+        Returns a JSON list of departments active for a term.
+
+        {
+            "departments": [
+                {
+                  "id": <int>,
+                  "department_name": <string>,
+                  "department_code": <string>
+                }
+            ]
+        }
+        '''
+        check_token(request.headers.get('token'))
 
         adoptions = Adoptions.select() \
                 .join(Departments, JOIN_LEFT_OUTER) \
@@ -61,7 +131,30 @@ class DeptsByTerm(Resource):
             return abort(400, message="No such term")
 
 class CoursesByDept(Resource):
+    @staticmethod
+    def url():
+        return api_base_url + "/v1/courses_by_dept/<int:department_id>"
+
     def get(self, department_id):
+        '''
+        Returns a JSON list of courses for a department.
+
+        {
+            "courses": [
+                {
+                  "id": <int>,
+                  "department_name": <string>,
+                  "department_code": <string>,
+                  "course_name": <string>,
+                  "course_code": <string>,
+                  "section_code": <string>,
+                  "course_materials_uri": <string>
+                }
+            ]
+        }
+        '''
+        check_token(request.headers.get('token'))
+
         adoptions = Adoptions.select() \
                 .join(Departments, JOIN_LEFT_OUTER) \
                 .where(Adoptions.department == department_id)
@@ -85,7 +178,31 @@ class CoursesByDept(Resource):
 
 
 class CoursesByTerm(Resource):
+    @staticmethod
+    def url():
+        return api_base_url + "/v1/courses_by_term/<int:term_id>"
+
     def get(self, term_id):
+        '''
+        Returns a JSON list of courses for a term.
+
+        {
+            "courses": [
+                {
+                  "id": <int>,
+                  "department_name": <string>,
+                  "department_code": <string>,
+                  "course_name": <string>,
+                  "course_code": <string>,
+                  "section_code": <string>,
+                  "course_materials_uri": <string>
+                }
+            ]
+        }
+        '''
+
+        check_token(request.headers.get('token'))
+
         adoptions = Adoptions.select().where(Adoptions.term_name == term_id)
 
         if adoptions.count() is not 0:
@@ -107,7 +224,30 @@ class CoursesByTerm(Resource):
 
 
 class SectionsByCourse(Resource):
+    @staticmethod
+    def url():
+        return api_base_url + "/v1/sections_by_course/<int:department_id>/<string:course_code>"
+
     def get(self, department_id, course_code):
+        '''
+        Returns a JSON list of sections for a course code.
+
+        {
+            "sections": [
+                {
+                  "id": <int>,
+                  "department_name": <string>,
+                  "department_code": <string>,
+                  "course_name": <string>,
+                  "course_code": <string>,
+                  "section_code": <string>,
+                  "course_materials_uri": <string>
+                }
+            ]
+        }
+        '''
+
+        check_token(request.headers.get('token'))
 
         adoptions = Adoptions.select() \
                 .join(Departments, JOIN_LEFT_OUTER) \
@@ -248,7 +388,55 @@ def get_materials(course_id):
     return materials
 
 class MaterialsByCourseID(Resource):
+    @staticmethod
+    def url():
+        return api_base_url + "/v1/materials_by_id/<int:course_id>"
+
     def get(self, course_id):
+        '''
+        Returns a JSON list of materials for a course ID. Note that not all fields are populated.
+
+        {
+            "materials": [
+                {
+                    "id": <int>,
+                    "term_name": <string>,
+                    "term_id": <int>,
+                    "department_name": <string>,
+                    "department_code": <string>,
+                    "department_id": <int>,
+                    "course_name": <string>,
+                    "course_code": <string>,
+                    "section_code": <string>,
+                    "section_name": <string>,
+                    "section_instructor": <string>,
+                    "book_id": <int>,
+                    "variant_id": <int>,
+                    "title": <string>,
+                    "author": <string>,
+                    "isbn": <string>,
+                    "required": <string>,
+                    "publisher": <string>,
+                    "edition_number": <string>,
+                    "copyright_year": <string>,
+                    "new_price": <float>,
+                    "new_cost": <float>,
+                    "new_inventory": <float>,
+                    "used_price": <float>,
+                    "used_cost": <float>,
+                    "used_inventory": <float>,
+                    "new_rental_price": <float>,
+                    "new_rental_cost": <float>,
+                    "new_rental_inventory": <float>,
+                    "used_rental_price": <float>,
+                    "used_rental_cost": <float>,
+                    "used_rental_inventory": <float>
+                }
+            ]
+        }
+        '''
+        check_token(request.headers.get('token'))
+
         try:
             adoption = Adoptions.select(Adoptions.magento_course).where(Adoptions.magento_course == course_id).get()
         except:
@@ -262,7 +450,55 @@ class MaterialsByCourseID(Resource):
 
 
 class MaterialsByCourseVars(Resource):
+    @staticmethod
+    def url():
+        return api_base_url + "/v1/materials/<string:term_name>/<string:dept_code>/<string:course_code>/<string:section_code>"
+
     def get(self, term_name, dept_code, course_code, section_code):
+        '''
+        Returns a JSON list of materials for a course by term name, department code, course code, and section code. Note that not all fields are populated.
+
+        {
+            "materials": [
+                {
+                    "id": <int>,
+                    "term_name": <string>,
+                    "term_id": <int>,
+                    "department_name": <string>,
+                    "department_code": <string>,
+                    "department_id": <int>,
+                    "course_name": <string>,
+                    "course_code": <string>,
+                    "section_code": <string>,
+                    "section_name": <string>,
+                    "section_instructor": <string>,
+                    "book_id": <int>,
+                    "variant_id": <int>,
+                    "title": <string>,
+                    "author": <string>,
+                    "isbn": <string>,
+                    "required": <string>,
+                    "publisher": <string>,
+                    "edition_number": <string>,
+                    "copyright_year": <string>,
+                    "new_price": <float>,
+                    "new_cost": <float>,
+                    "new_inventory": <float>,
+                    "used_price": <float>,
+                    "used_cost": <float>,
+                    "used_inventory": <float>,
+                    "new_rental_price": <float>,
+                    "new_rental_cost": <float>,
+                    "new_rental_inventory": <float>,
+                    "used_rental_price": <float>,
+                    "used_rental_cost": <float>,
+                    "used_rental_inventory": <float>
+                }
+            ]
+        }
+        '''
+        check_token(request.headers.get('token'))
+
         try:
             adoption = Adoptions.select(Adoptions.magento_course) \
                 .join(Departments, JOIN_LEFT_OUTER) \
@@ -284,15 +520,32 @@ class MaterialsByCourseVars(Resource):
 
 
 # API resource routing
-api_base_url = "/api"
-api.add_resource(Terms, api_base_url + "/v1/terms")
-api.add_resource(Term, api_base_url + "/v1/term/<int:term_id>")
-api.add_resource(DeptsByTerm, api_base_url + "/v1/departments_by_term/<int:term_id>")
-api.add_resource(CoursesByDept, api_base_url + "/v1/courses_by_dept/<int:department_id>")
-api.add_resource(CoursesByTerm, api_base_url + "/v1/courses_by_term/<int:term_id>")
-api.add_resource(SectionsByCourse, api_base_url + "/v1/sections_by_course/<int:department_id>/<string:course_code>")
-api.add_resource(MaterialsByCourseID, api_base_url + "/v1/materials_by_id/<int:course_id>")
-api.add_resource(MaterialsByCourseVars, api_base_url + "/v1/materials/<string:term_name>/<string:dept_code>/<string:course_code>/<string:section_code>")
+endpoints = [
+    Terms,
+    Term,
+    DeptsByTerm,
+    CoursesByDept,
+    CoursesByTerm,
+    SectionsByCourse,
+    MaterialsByCourseID,
+    MaterialsByCourseVars
+]
+
+for endpoint in endpoints:
+    api.add_resource(endpoint, endpoint.url())
+
+
+@app.route(api_base_url + "/doc")
+def documentation():
+    '''
+    Serves the static documentation page
+    '''
+
+    urls_docs = []
+    for endpoint in endpoints:
+        urls_docs.append({"url": endpoint.url(), "doc": inspect.getdoc(endpoint.get)})
+
+    return render_template("doc.html", urls_docs=urls_docs)
 
 
 if __name__ == '__main__':

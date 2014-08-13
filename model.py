@@ -1,7 +1,7 @@
 __author__ = 'jburks'
 
 # Created with pwiz.py
-# pwiz.py -e mysql -u root converse > model.py
+# pwiz.py -e mysql -u root converse > model_all.py
 # This file is a trimmed down version of model_all.py, which is a direct dump of pwiz
 # model_all.py won't run as is, so be warned...
 
@@ -28,6 +28,22 @@ class UnknownField(object):
 class BaseModel(Model):
     class Meta:
         database = database
+
+class ApiUser(BaseModel):
+    api_key = CharField(max_length=40, null=True)
+    created = DateTimeField()
+    email = CharField(max_length=128, null=True)
+    firstname = CharField(max_length=32, null=True)
+    is_active = IntegerField()
+    lastname = CharField(max_length=32, null=True)
+    lognum = IntegerField()
+    modified = DateTimeField(null=True)
+    reload_acl_flag = IntegerField()
+    user = PrimaryKeyField(db_column='user_id')
+    username = CharField(max_length=40, null=True)
+
+    class Meta:
+        db_table = 'api_user'
 
 class Schools(BaseModel):
     school_name = CharField(max_length=255)
