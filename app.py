@@ -2,6 +2,7 @@ __author__ = 'jburks'
 
 from flask import Flask, jsonify, request, render_template
 from flask.ext.restful import Api, Resource, abort
+from werkzeug.contrib.fixers import ProxyFix
 from model import *
 import inspect
 
@@ -536,6 +537,7 @@ for endpoint in endpoints:
 
 
 @app.route(api_base_url + "/doc")
+@app.route("/")
 def documentation():
     '''
     Serves the static documentation page
@@ -547,6 +549,8 @@ def documentation():
 
     return render_template("doc.html", urls_docs=urls_docs)
 
+app.wsgi_app = ProxyFix(app.wsgi_app)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    #app.run(debug=True)
+    app.run
