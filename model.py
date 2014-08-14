@@ -7,7 +7,7 @@ __author__ = 'jburks'
 
 from peewee import *
 
-database = MySQLDatabase('converse', **{'user': 'root'})
+database = MySQLDatabase('converse', **{'host': 'localhost', 'port': 3306, 'user': 'root', 'password': ''})
 
 # This might be specific to Converse, so tweak as needed for other schools.
 eav_attr = {
